@@ -1,17 +1,19 @@
-#include <stdio.h>
 #include <time.h>
-#include <pcap.h>
-#include <netinet/in.h>
-#include <netinet/if_ether.h>
-#include <netinet/ip_icmp.h>
-#include <netinet/ip.h>
-
-#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
+
+#include <pcap.h>
+
+#include <netinet/if_ether.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+
+//#include <stdlib.h>
+#define UNUSED(x) (void)(x)
 
 #define TYPESTRLEN 64
-
-void print_packet_info(const u_char *packet, struct pcap_pkthdr packet_header);
 
 void icmp_type_to_str(unsigned int type, char* icmp_type_string)
 {
@@ -63,6 +65,8 @@ void icmp_type_to_str(unsigned int type, char* icmp_type_string)
 
 void callback(u_char* args, const struct pcap_pkthdr* packet_header, const u_char* packet)
 {
+    UNUSED(args);
+
     struct ether_header* eth_header = (struct ether_header*)packet;
     static unsigned int count = 1;
 
@@ -83,7 +87,7 @@ void callback(u_char* args, const struct pcap_pkthdr* packet_header, const u_cha
 
             time_t nowtime;
             struct tm *nowtm;
-            char tmbuf[64], buf[64];
+            char tmbuf[32], buf[40];
 
             nowtime = packet_header->ts.tv_sec;
             nowtm = localtime(&nowtime);
@@ -107,19 +111,24 @@ void callback(u_char* args, const struct pcap_pkthdr* packet_header, const u_cha
 }
 
 int main(int argc, char *argv[]) {
+    UNUSED(argc); UNUSED(argv);
+
     char *device;
     char error_buffer[PCAP_ERRBUF_SIZE];
-    pcap_t *handle;
-    const u_char *packet;
-    struct pcap_pkthdr packet_header;
-    int packet_count_limit = 1;
-    int timeout_limit = 10000; /* In milliseconds */
+    pcap_if_t* alldevsp = NULL;
+    pcap_t *handle      = NULL;
+    int promisc_mode    = 1;
+    int timeout_limit   = 1000; /* In milliseconds */
 
-    device = pcap_lookupdev(error_buffer);
-    if (device == NULL) {
-        printf("Error finding device: %s\n", error_buffer);
+    if (pcap_findalldevs(&alldevsp, error_buffer) < 0) {
+        fprintf(stderr, "pcap_findalldevs() : %s\n", error_buffer);
+        return 1;
+    } else if (alldevsp == NULL) {
+        fprintf(stderr, "pcap_findalldevs() : no devices found\n");
         return 1;
     }
+
+    device = alldevsp->name;
 
     printf("INTERFACE: %s\n\n", device);
 
@@ -127,14 +136,14 @@ int main(int argc, char *argv[]) {
     handle = pcap_open_live(
             device,
             BUFSIZ,
-            packet_count_limit,
+            promisc_mode,
             timeout_limit,
             error_buffer
     );
 
     if (handle == NULL) {
         printf("ERROR: %s\n", error_buffer);
-        exit(1);
+        return 1;
     }
 
     u_char* user = NULL;
